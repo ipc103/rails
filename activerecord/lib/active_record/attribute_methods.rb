@@ -93,7 +93,47 @@ module ActiveRecord
           aliased_method_redefined_as_well = method_defined_within?(method_name, self)
           return if aliased_method_redefined_as_well
 
-          ActiveModel.deprecator.warn(
+        if aliased_method_redefined
+          # Not much for us to do here? The user has already (re)defined
+          # the method we were going to create.
+
+          # TODO: While not necessary for backwards compatibility, we
+          # should probably still define the method to ensure perfect
+          # forward compatibility when we stop checking this in 7.2.
+
+          return
+        end
+
+        # If the target method (including any further aliases) hasn't
+        # been redefined by the user, we can go with define_proxy_call.
+        # To establish that, we need to walk the chain of aliases.
+
+        all_targets_are_attribute_methods = true
+
+        far_name = next_name = old_name
+        while next_name
+          far_name = next_name
+
+          far_target = pattern.method_name(far_name).to_s
+          far_method = (instance_method(far_target) if method_defined?(far_target) || private_method_defined?(far_target))
+          if far_method
+            unless far_method.owner == generated_attribute_methods || far_method.owner == ActiveRecord::AttributeMethods::PrimaryKey
+              all_targets_are_attribute_methods = false
+              break
+            end
+          elsif attribute_aliases.key?(far_name)
+            # walk past a missing method in the alias chain: it might not be defined yet
+          else
+            all_targets_are_attribute_methods = false
+            break
+          end
+
+          next_name = attribute_aliases[far_name]
+        end
+
+        if all_targets_are_attribute_methods && has_attribute?(far_name)
+          define_proxy_call(code_generator, method_name, pattern.proxy_target, pattern.parameters, far_name,
+          ActiveRecord.deprecator.warn(
             "#{self} model aliases `#{old_name}` and has a method called `#{target_name}` defined. " \
             "Starting in Rails 7.2 `#{method_name}` will not be calling `#{target_name}` anymore. " \
             "You may want to additionally define `#{method_name}` to preserve the current behavior."
