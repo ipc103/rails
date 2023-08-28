@@ -54,9 +54,8 @@ module ActiveRecord
         end
 
         def _create_record(attributes, raise_error = false, &block)
-          record = build_record(attributes, &block)
+          record = build(attributes, &block)
           saved = record.save
-          set_new_record(record)
           raise RecordInvalid.new(record) if !saved && raise_error
           record
         end
